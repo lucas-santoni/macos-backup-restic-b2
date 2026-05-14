@@ -1,8 +1,8 @@
-# backups
+# [Nightly encrypted offsite backup of $HOME on macOS](https://lucas.zip/macos-restic-b2)
 
 Encrypted, deduplicated, scheduled backups from a personal Mac to Backblaze B2 using [restic](https://restic.net) and [resticprofile](https://creativeprojects.github.io/resticprofile/).
 
-This is the code accompanying [**Nightly encrypted offsite backup of $HOME on macOS**](https://lucas.zip/macos-restic-b2). The article walks through the architecture, the macOS security mechanics (TCC / AMFI / Keychain), and the end-to-end setup. This README is just a map of what lives in the repo.
+This is the code accompanying the article linked above. The article walks through the architecture, the macOS security mechanics (TCC / AMFI / Keychain), and the end-to-end setup. This README is just a map of what lives in the repo.
 
 ## Layout
 
