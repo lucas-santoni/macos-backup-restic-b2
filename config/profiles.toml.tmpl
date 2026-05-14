@@ -1,0 +1,103 @@
+version = "2"
+
+[global]
+default-command = "snapshots"
+initialize = false
+priority = "low"
+
+[profiles.default]
+description = "Home directory backup to Backblaze B2"
+initialize = false
+repository = "{{B2_REPO}}"
+
+  [profiles.default.backup]
+  source = ["/Users/{{USERNAME}}"]
+  exclude-file = "/Users/{{USERNAME}}/Documents/backups/config/excludes.txt"
+  exclude-caches = true
+  one-file-system = true
+  tag = ["scheduled"]
+  verbose = 1
+  # If backup fires while another job (typically forget) holds the repo
+  # lock, wait up to 4h rather than failing immediately. This happens
+  # whenever multiple missed schedules fire on laptop-wake — both agents
+  # land in the same minute and race for the lock. Default behavior is
+  # "fail if locked" (lock-wait = 0s), which produces spurious exit-11
+  # failures.
+  lock-wait = "4h"
+  # restic's repository lock is separate from resticprofile's profile lock.
+  # `lock-wait` covers the latter; `retry-lock` is forwarded to restic as
+  # `--retry-lock=4h` and covers the former. Both are needed when two
+  # commands can fire on the same repo simultaneously (laptop wake collapses
+  # missed firings into one wake-fire).
+  retry-lock = "4h"
+  # NOTIFY:BEGIN
+  # Notifications via configured gateway (script reads API key from Keychain).
+  # Note: run-after used to invoke `resticprofile check` after every backup;
+  # removed because we already run check weekly on its own schedule, and a
+  # post-backup check would race the notification on failure.
+  run-after      = ["/Users/{{USERNAME}}/Documents/backups/bin/restic-notify.sh success"]
+  run-after-fail = ["/Users/{{USERNAME}}/Documents/backups/bin/restic-notify.sh failure"]
+  # NOTIFY:END
+  schedule = "*-*-* 02:30:00"
+  schedule-permission = "user"
+  schedule-lock-mode = "default"
+  schedule-log = "/Users/{{USERNAME}}/Documents/backups/logs/backup.log"
+
+  # Retention: 30 daily snapshots, then 1 per calendar month kept effectively forever.
+  [profiles.default.forget]
+  keep-daily = 30
+  keep-weekly = 0
+  keep-monthly = 9999
+  keep-yearly = 0
+  prune = false
+  # If forget fires while backup is still uploading (e.g. backup ran slow due
+  # to overnight DarkWake-only execution), wait up to 4h for the repo lock
+  # rather than failing immediately. Default behavior is "fail if locked"
+  # (lock-wait = 0s), which produced spurious exit-11 failures.
+  lock-wait = "4h"
+  # restic's repository lock is separate from resticprofile's profile lock.
+  # `lock-wait` covers the latter; `retry-lock` is forwarded to restic as
+  # `--retry-lock=4h` and covers the former. Both are needed when two
+  # commands can fire on the same repo simultaneously (laptop wake collapses
+  # missed firings into one wake-fire).
+  retry-lock = "4h"
+  # NOTIFY:BEGIN
+  run-after      = ["/Users/{{USERNAME}}/Documents/backups/bin/restic-notify.sh success"]
+  run-after-fail = ["/Users/{{USERNAME}}/Documents/backups/bin/restic-notify.sh failure"]
+  # NOTIFY:END
+  schedule = "*-*-* 03:00:00"
+  schedule-permission = "user"
+  schedule-log = "/Users/{{USERNAME}}/Documents/backups/logs/forget.log"
+
+  [profiles.default.prune]
+  lock-wait = "4h"
+  # restic's repository lock is separate from resticprofile's profile lock.
+  # `lock-wait` covers the latter; `retry-lock` is forwarded to restic as
+  # `--retry-lock=4h` and covers the former. Both are needed when two
+  # commands can fire on the same repo simultaneously (laptop wake collapses
+  # missed firings into one wake-fire).
+  retry-lock = "4h"
+  # NOTIFY:BEGIN
+  run-after      = ["/Users/{{USERNAME}}/Documents/backups/bin/restic-notify.sh success"]
+  run-after-fail = ["/Users/{{USERNAME}}/Documents/backups/bin/restic-notify.sh failure"]
+  # NOTIFY:END
+  schedule = "Sun *-*-* 04:00:00"
+  schedule-permission = "user"
+  schedule-log = "/Users/{{USERNAME}}/Documents/backups/logs/prune.log"
+
+  [profiles.default.check]
+  read-data-subset = "5%"
+  lock-wait = "4h"
+  # restic's repository lock is separate from resticprofile's profile lock.
+  # `lock-wait` covers the latter; `retry-lock` is forwarded to restic as
+  # `--retry-lock=4h` and covers the former. Both are needed when two
+  # commands can fire on the same repo simultaneously (laptop wake collapses
+  # missed firings into one wake-fire).
+  retry-lock = "4h"
+  # NOTIFY:BEGIN
+  run-after      = ["/Users/{{USERNAME}}/Documents/backups/bin/restic-notify.sh success"]
+  run-after-fail = ["/Users/{{USERNAME}}/Documents/backups/bin/restic-notify.sh failure"]
+  # NOTIFY:END
+  schedule = "Sun *-*-* 05:00:00"
+  schedule-permission = "user"
+  schedule-log = "/Users/{{USERNAME}}/Documents/backups/logs/check.log"

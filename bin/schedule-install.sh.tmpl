@@ -1,0 +1,146 @@
+#!/bin/zsh
+# Install resticprofile schedules and rewrite the generated launchd plists
+# to call our Keychain-aware wrapper instead of resticprofile directly.
+#
+# Adjustments vs `resticprofile schedule --all`:
+#
+# 1. We invoke resticprofile in a SCRUBBED environment (`env -i ...`).
+#    If RESTIC_PASSWORD or B2_* vars are present when resticprofile generates
+#    the plists, it embeds them as plaintext in EnvironmentVariables. That
+#    would defeat the entire point of storing secrets in Keychain.
+#
+# 2. We launch via /bin/zsh (system-signed, Apple-trusted) with the wrapper
+#    as its first argument. macOS AMFI terminates user-created shell scripts
+#    referenced as `Program` with OS_REASON_CODESIGNING; /bin/zsh works
+#    around the codesigning policy.
+#
+# 3. We rename Label and plist filename from
+#    `local.resticprofile.default.<cmd>` (resticprofile's convention) to
+#    `{{BUNDLE_ID_PREFIX}}.<cmd>` so the System Settings → Login Items panel
+#    surfaces a friendly name instead of the cryptic "resticprofile".
+#
+# Idempotent: safe to re-run. Existing schedules are removed and reinstalled.
+
+set -euo pipefail
+# Make empty globs expand to nothing instead of erroring (zsh default is to
+# fail on no-match; we glob over plists and logs that may legitimately be absent).
+setopt nullglob
+
+WRAPPER="$HOME/Documents/backups/bin/restic-wrap.sh"
+RESTICPROFILE="/opt/homebrew/bin/resticprofile"
+CONFIG="$HOME/Documents/backups/config/profiles.toml"
+PLIST_DIR="$HOME/Library/LaunchAgents"
+LABEL_PREFIX="{{BUNDLE_ID_PREFIX}}"
+UID_NUM="$(/usr/bin/id -u)"
+
+echo "[1/5] Removing any existing schedules (both naming schemes)..."
+# Bootout any agents under either old-style or new-style labels.
+for cmd in backup forget prune check; do
+  for label in "local.resticprofile.default.$cmd" "$LABEL_PREFIX.$cmd"; do
+    /bin/launchctl bootout "user/$UID_NUM/$label" 2>/dev/null || true
+    /bin/launchctl bootout "gui/$UID_NUM/$label"  2>/dev/null || true
+  done
+done
+# Have resticprofile clean up its own bookkeeping.
+env -i HOME="$HOME" PATH="/opt/homebrew/bin:/usr/bin:/bin" \
+  "$RESTICPROFILE" --config "$CONFIG" unschedule --all 2>&1 | grep -E "removed|error" || true
+# Remove any leftover plist files from either naming scheme.
+rm -f "$PLIST_DIR"/local.resticprofile.*.plist "$PLIST_DIR/$LABEL_PREFIX".*.plist
+
+echo "[2/5] Generating new plists from a scrubbed environment..."
+env -i HOME="$HOME" PATH="/opt/homebrew/bin:/usr/bin:/bin" \
+  "$RESTICPROFILE" --config "$CONFIG" schedule --all > /tmp/schedule-install.log 2>&1
+grep -E "scheduled job|error" /tmp/schedule-install.log || cat /tmp/schedule-install.log
+# resticprofile schedule --all bootstraps the agents under their original
+# `local.resticprofile.default.<cmd>` labels into user/<uid>. We want them
+# gone before the rename-and-rebootstrap step below — otherwise they linger
+# as orphans in launchctl list (their plist files get deleted during the
+# rename, but launchd memory still holds the entries).
+for cmd in backup forget prune check; do
+  /bin/launchctl bootout "user/$UID_NUM/local.resticprofile.default.$cmd" 2>/dev/null || true
+  /bin/launchctl bootout "gui/$UID_NUM/local.resticprofile.default.$cmd"  2>/dev/null || true
+done
+
+echo "[3/5] Patching plists: relabel, /bin/zsh launcher, strip leaked env..."
+/usr/bin/python3 - "$WRAPPER" "$PLIST_DIR" "$LABEL_PREFIX" <<'PY'
+import os, sys, plistlib, glob
+wrapper, plist_dir, label_prefix = sys.argv[1], sys.argv[2], sys.argv[3]
+log_dir = os.path.expanduser("~/Documents/backups/logs")
+
+for old_path in sorted(glob.glob(os.path.join(plist_dir, "local.resticprofile.*.plist"))):
+    with open(old_path, "rb") as f:
+        p = plistlib.load(f)
+
+    # Derive command (backup/forget/prune/check) from old Label.
+    # Old: "local.resticprofile.default.<cmd>"
+    cmd = p["Label"].split(".")[-1]
+    new_label = f"{label_prefix}.{cmd}"
+
+    # Rewrite Label and plist filename to the friendly form.
+    p["Label"] = new_label
+
+    # Launch via a per-command "{{BUNDLE_NAME_PREFIX}} <Cmd>.app" bundle.
+    # MacOS/<{{BUNDLE_NAME_PREFIX}} <Cmd>> is a real Mach-O launcher (built
+    # by install-bundles.sh) that execs /bin/zsh, satisfying AMFI's
+    # codesigning policy. The bundle's CFBundleName ("{{BUNDLE_NAME_PREFIX}}
+    # Backup", "{{BUNDLE_NAME_PREFIX}} Forget", etc.) is what macOS displays
+    # in System Settings → Login Items. Distinct bundles per command give
+    # four distinct rows.
+    cmd_pretty = cmd.capitalize()  # "backup" -> "Backup"
+    launcher = os.path.expanduser(
+        f"~/Documents/backups/bundles/{{BUNDLE_NAME_PREFIX}} {cmd_pretty}.app/Contents/MacOS/{{BUNDLE_NAME_PREFIX}} {cmd_pretty}"
+    )
+    p["Program"] = launcher
+    args = p.get("ProgramArguments", [])
+    # Original: [resticprofile, --no-prio, --no-ansi, --config, <path>, run-schedule, <job>]
+    # Replace argv[0] with the wrapper, prepend the launcher as argv[0].
+    if args:
+        args[0] = wrapper
+    p["ProgramArguments"] = [launcher] + args
+    # Tell launchd which app bundle this agent belongs to. macOS reads
+    # CFBundleName from the bundle for the Login Items row's display name.
+    p["AssociatedBundleIdentifiers"] = [f"{{BUNDLE_ID_PREFIX}}.{cmd}"]
+
+    # Strip ALL EnvironmentVariables. The wrapper sets what it needs.
+    p.pop("EnvironmentVariables", None)
+    # Remove LimitLoadToSessionType=Background. Background-session agents
+    # have restricted Keychain access; we need the agent to run in the
+    # user's regular session so `security` can read login-keychain items.
+    p.pop("LimitLoadToSessionType", None)
+    # Capture stdout/stderr so we can debug failed exec / wrapper errors.
+    p["StandardOutPath"] = f"{log_dir}/launchd-{cmd}.out.log"
+    p["StandardErrorPath"] = f"{log_dir}/launchd-{cmd}.err.log"
+
+    new_path = os.path.join(plist_dir, f"{new_label}.plist")
+    with open(new_path, "wb") as f:
+        plistlib.dump(p, f)
+    if new_path != old_path:
+        os.remove(old_path)
+    print(f"  {os.path.basename(old_path)} → {os.path.basename(new_path)}  (label: {new_label})")
+PY
+
+echo "[4/5] Reloading launchd agents into gui/<uid>..."
+# `resticprofile schedule` loads agents into user/<uid>, which lacks GUI-session
+# Keychain access — `security find-generic-password` returns empty there. We
+# bootout from user/<uid> (where they were loaded) and bootstrap into gui/<uid>
+# (which has the user's regular Keychain unlocked).
+for plist in "$PLIST_DIR/$LABEL_PREFIX".*.plist; do
+  [[ -f "$plist" ]] || continue
+  label="$(basename "$plist" .plist)"
+  # Old-name bootout already happened in step 1; do it again for the new name
+  # in case a stale entry is hanging around in user/ from an interrupted run.
+  /bin/launchctl bootout "user/$UID_NUM/$label" 2>/dev/null || true
+  /bin/launchctl bootout "gui/$UID_NUM/$label"  2>/dev/null || true
+  /bin/launchctl bootstrap "gui/$UID_NUM" "$plist"
+done
+
+echo "[5/5] Renaming launchd-*.{out,err}.log files (drop the 'default.' prefix)..."
+for f in "$HOME/Documents/backups/logs"/launchd-default.*.{out,err}.log; do
+  [[ -f "$f" ]] || continue
+  mv -f "$f" "${f/launchd-default./launchd-}"
+done 2>/dev/null || true
+
+echo
+echo "Done. Verify with:"
+echo "  launchctl list | grep $LABEL_PREFIX"
+echo "  $WRAPPER status --all"

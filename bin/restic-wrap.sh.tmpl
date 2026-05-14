@@ -1,0 +1,64 @@
+#!/bin/zsh
+# Self-contained wrapper that loads restic credentials from macOS Keychain
+# into the environment then exec's resticprofile with the given arguments.
+#
+# Usage:
+#   ~/Documents/backups/bin/restic-wrap.sh -n default backup
+#   ~/Documents/backups/bin/restic-wrap.sh -n default snapshots
+
+set -e
+
+# launchd's default PATH is /usr/bin:/bin:/usr/sbin:/sbin. Prepend Homebrew so
+# resticprofile can find the `restic` binary it shells out to.
+export PATH="/opt/homebrew/bin:$PATH"
+
+# Fetch a keychain entry into a named variable. zsh's `set -e` does NOT
+# abort the parent shell when a command inside $(...) exits non-zero, so
+# a `security` failure would otherwise leave us silently carrying an empty
+# value forward. We capture the output, then explicitly check both exit
+# status and emptiness, and exit 11 on failure.
+fetch_secret() {
+  local var_name="$1" service="$2" out
+  out="$(security find-generic-password -a {{USERNAME}} -s "$service" -w 2>&1)"
+  if [[ $? -ne 0 || -z "$out" ]]; then
+    echo "restic-wrap: keychain read failed for $service: $out" >&2
+    exit 11
+  fi
+  export "$var_name=$out"
+}
+
+fetch_secret RESTIC_PASSWORD restic-repo-password
+fetch_secret B2_ACCOUNT_ID   restic-b2-key-id
+fetch_secret B2_ACCOUNT_KEY  restic-b2-app-key
+export RESTIC_CACHE_DIR="$HOME/Documents/backups/cache"
+
+# Inject --config only if the caller didn't already pass one.
+# Interactive use (no --config) gets the default config injected.
+# Scheduled launchd plists already include --config, so they're passed through.
+if [[ "$*" != *"--config"* ]]; then
+  set -- --config "$HOME/Documents/backups/config/profiles.toml" "$@"
+fi
+
+# Inject --log for direct command runs so manual invocations land in the
+# same per-command log file the run-after notification hook parses. Without
+# this, a manual `backup` writes only to the terminal; the hook then reports
+# the previous scheduled run's metrics. Skip for `run-schedule` (which is
+# what the launchd plists invoke; resticprofile applies `schedule-log`
+# from profiles.toml automatically there) and for read-only commands like
+# `snapshots` that have no configured log.
+if [[ "$*" != *"--log"* ]]; then
+  for arg in "$@"; do
+    case "$arg" in
+      run-schedule)
+        break ;;
+      backup|forget|prune|check)
+        set -- --log "$HOME/Documents/backups/logs/$arg.log" "$@"
+        break ;;
+      *.backup|*.forget|*.prune|*.check)
+        set -- --log "$HOME/Documents/backups/logs/${arg##*.}.log" "$@"
+        break ;;
+    esac
+  done
+fi
+
+exec /opt/homebrew/bin/resticprofile "$@"

@@ -1,0 +1,20 @@
+# Per-machine config (copied from site.conf.example by the user).
+site.conf
+
+# Output of bin/configure.sh — regenerated from the .tmpl files.
+bin/restic-wrap.sh
+bin/restic-notify.sh
+bin/schedule-install.sh
+bin/install-bundles.sh
+config/profiles.toml
+
+# Runtime state that lives next to the config but isn't config.
+logs/
+cache/
+
+# Built by bin/install-bundles.sh from bin/launcher.c — Mach-O binary,
+# rendered Info.plist, rasterized icon, and codesign output.
+bundles/
+
+# macOS metadata
+.DS_Store

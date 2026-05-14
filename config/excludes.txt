@@ -1,0 +1,89 @@
+# === System files that even FDA-granted restic cannot read ===
+# These trigger restic exit code 3 ("source files couldn't be read") on
+# every backup and clutter both the log and notifications. Excluding
+# them silences benign warnings.
+**/Library/Application Support/FileProvider
+**/Library/Group Containers/group.com.apple.secure-control-center-preferences
+**/Library/Group Containers/group.com.apple.CoreSpeech
+# milod (Maps live offline data) keeps milo.db-wal locked exclusively;
+# restic gets EPERM trying to read it.
+**/Library/Daemon Containers/*/Data/com.apple.milod
+# Biome is Apple's event-streaming framework; the "restricted" subdir holds
+# entitled-only event data (Safari page loads, etc.) that returns EPERM even
+# under FDA. The whole tree is OS-managed analytics with no restore value.
+**/Library/Biome
+# DuetExpertCenter is the Siri / proactive-suggestions ML store; specific
+# files (ATXAppPredictionMicroLocation, _ATXAppLaunchLocation) return EPERM
+# under FDA. OS rebuilds it from usage patterns, so nothing to back up.
+**/Library/DuetExpertCenter
+
+# === macOS system / user library noise ===
+**/.Trash
+**/Library/Caches
+**/Library/Logs
+**/Library/Application Support/Steam
+**/Library/Application Support/Slack/Cache
+**/Library/Application Support/Slack/Service Worker
+**/Library/Application Support/Code/Cache*
+**/Library/Application Support/Code/CachedData
+**/Library/Application Support/Cursor/Cache*
+**/Library/Application Support/Google/Chrome/*/Cache
+**/Library/Application Support/Google/Chrome/*/Code Cache
+**/Library/Application Support/Firefox/Profiles/*/cache2
+**/Library/Containers/*/Data/Library/Caches
+**/Library/Group Containers/*/Library/Caches
+**/Library/Developer/Xcode/DerivedData
+**/Library/Developer/Xcode/Archives
+**/Library/Developer/CoreSimulator
+**/Library/Metadata/CoreSpotlight
+**/Library/Saved Application State
+
+# === Already backed up elsewhere ===
+**/Library/Mobile Documents
+**/Library/CloudStorage
+
+# === Build artifacts and dependency caches ===
+**/node_modules
+**/.next
+**/.turbo
+**/.nuxt
+**/dist
+**/build
+**/.cache
+**/target
+**/.venv
+**/venv
+**/__pycache__
+**/*.pyc
+**/.gradle
+**/.mvn
+**/Pods
+**/.terraform
+**/.terragrunt-cache
+
+# === Docker / VMs ===
+**/Library/Containers/com.docker.docker
+**/Library/Group Containers/group.com.docker
+**/.docker
+**/*.vmdk
+**/*.qcow2
+**/Library/Application Support/com.apple.virtualization
+# OrbStack ships an 8 TiB-capable sparse raw image
+# (data.img.raw); restic walks it at logical size and reports
+# absurd processed-size totals even though dedup keeps the
+# repository tiny. Exclude the whole group container, like Docker above.
+**/Library/Group Containers/HUAQ24HBR6.dev.orbstack
+
+# === Restic's own cache ===
+**/Documents/backups/cache
+
+# === Misc ===
+**/.DS_Store
+**/Downloads/*.dmg
+**/Downloads/*.iso
+**/Downloads/*.pkg
+
+# === Privacy: don't back up secrets that live elsewhere ===
+**/.ssh/known_hosts
+**/.zsh_history
+**/.bash_history

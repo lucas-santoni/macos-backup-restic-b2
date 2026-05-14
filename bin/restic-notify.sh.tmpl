@@ -1,0 +1,170 @@
+#!/bin/zsh
+# POST a notification payload to the configured gateway after a
+# resticprofile command completes. Invoked from `run-after` (success) or
+# `run-after-fail` (failure) hooks in profiles.toml.
+#
+# Args:
+#   $1 — outcome ("success" or "failure")
+#
+# Reads from environment (set by resticprofile):
+#   PROFILE_NAME           — profile that ran (e.g. "default")
+#   PROFILE_COMMAND        — restic-level command (e.g. "backup", "forget")
+#   ERROR_EXIT_CODE        — exit code on failure (only on failure path)
+#   ERROR_MESSAGE          — error message on failure (only on failure path)
+#
+# Reads metrics (size, duration, snapshot count) by parsing the most recent
+# section of the per-command resticprofile log file.
+#
+# Always exits 0 — telegram delivery failures must not cascade into
+# resticprofile's hook chain.
+
+OUTCOME="${1:-unknown}"
+COMMAND="${PROFILE_COMMAND:-unknown}"
+PROFILE="${PROFILE_NAME:-default}"
+# RESTIC_NOTIFY_LOG_DIR overrides the log path during testing — test-notify.sh
+# writes fixture logs into a tmp dir and points us at it. Defaults to the
+# real per-command log directory.
+LOG_DIR="${RESTIC_NOTIFY_LOG_DIR:-$HOME/Documents/backups/logs}"
+
+# RESTIC_NOTIFY_DRY_RUN=1 prints the JSON payload to stdout instead of
+# POSTing to the gateway, so test-notify.sh can render the shapes locally
+# without sending real Telegram messages.
+if [[ "${RESTIC_NOTIFY_DRY_RUN:-0}" != "1" ]]; then
+  API_KEY="$(security find-generic-password -a {{USERNAME}} -s telegram-gateway-api-key -w 2>/dev/null)"
+  if [[ -z "$API_KEY" ]]; then
+    echo "restic-notify: keychain read for telegram-gateway-api-key failed" >&2
+    exit 0
+  fi
+fi
+
+# Build the payload (and parse the matching log) entirely in Python: it's
+# easier to do regex extraction and JSON assembly there than in zsh, and
+# python3 is already part of the Keychain-stack we depend on.
+PAYLOAD="$(/usr/bin/python3 - "$OUTCOME" "$COMMAND" "$PROFILE" "$LOG_DIR" "${ERROR_EXIT_CODE:-}" "${ERROR_MESSAGE:-}" <<'PY'
+import json, os, re, socket, sys
+
+outcome, command, profile, log_dir, err_exit, err_msg = sys.argv[1:7]
+# Strip the ".local" mDNS suffix so multi-host setups read cleanly
+# ("Hercules" rather than "Hercules.local").
+hostname = socket.gethostname().removesuffix(".local")
+
+# Read the latest "section" of the log: lines AFTER the most recent "starting
+# 'COMMAND'" marker. resticprofile writes both start and finish lines, and
+# multiple runs share one log file, so this avoids picking up stale data.
+log_path = os.path.join(log_dir, f"{command}.log")
+section = ""
+try:
+    with open(log_path) as f:
+        lines = f.readlines()
+    last_start = None
+    needle = f"starting '{command}'"
+    for i, line in enumerate(lines):
+        if needle in line:
+            last_start = i
+    if last_start is not None:
+        section = "".join(lines[last_start:])
+except FileNotFoundError:
+    pass
+
+# Extract metrics specific to each command. Returns a list of formatted
+# bullet-style lines that get joined into CONTENT.
+metrics = []
+
+def find(pattern, text=section, group=0, flags=0):
+    m = re.search(pattern, text, flags)
+    return m.group(group) if m else None
+
+if command == "backup":
+    # "processed 36707 files, 12.024 GiB in 0:14"
+    m = re.search(r'processed (\d+) files?, ([\d.]+\s*\w+) in ([\d:]+)', section)
+    if m:
+        metrics.append(f"📦 {m.group(1)} files / {m.group(2)}")
+        metrics.append(f"⏱ {m.group(3)}")
+    # "Added to the repository: 427.527 MiB (74.636 MiB stored)"
+    m = re.search(r'Added to the repository:\s+([^(]+?)\s+\(([^)]+)\)', section)
+    if m:
+        metrics.append(f"⬆️ {m.group(1).strip()} added · {m.group(2).strip()}")
+    # "snapshot fc468d66 saved"
+    m = re.search(r'snapshot ([0-9a-f]+) saved', section)
+    if m:
+        metrics.append(f"🆔 snapshot {m.group(1)}")
+elif command == "forget":
+    # restic forget output emits two header lines:
+    #   "keep N snapshots:"     (always present, lists snapshots retained)
+    #   "remove M snapshots:"   (only present when policy actually removes)
+    # The naive "first matching '\d+ snapshots' line" parser saw only the
+    # kept count, so a forget that pruned 5 daily snapshots looked identical
+    # to one that pruned 0. Pull both counts and render together; default
+    # removed to 0 when the section is absent.
+    kept = re.search(r'keep (\d+) snapshots?:', section)
+    removed = re.search(r'remove (\d+) snapshots?:', section)
+    if kept:
+        removed_n = removed.group(1) if removed else "0"
+        metrics.append(f"📁 {kept.group(1)} kept · {removed_n} removed")
+elif command == "prune":
+    # "total prune:           N blobs / M B"
+    m = re.search(r'total prune:\s+([\d,]+) blobs?\s*/\s*([\d.]+\s*\w+)', section)
+    if m:
+        metrics.append(f"🗑️ pruned {m.group(1)} blobs / {m.group(2)}")
+    # "remaining:         N blobs / M GiB"
+    m = re.search(r'remaining:\s+([\d,]+) blobs?\s*/\s*([\d.]+\s*\w+)', section)
+    if m:
+        metrics.append(f"📦 remaining {m.group(1)} blobs / {m.group(2)}")
+elif command == "check":
+    if "no errors were found" in section:
+        metrics.append("✅ no errors found")
+
+# Build title / content / level.
+# Emoji is constant (💾) — severity is conveyed by `level`, not by the icon.
+# Special case: restic exit code 3 on `backup` means "snapshot saved, but some
+# source files couldn't be read" — typically system-locked files like
+# FileProvider tombstones. The snapshot itself is healthy; resticprofile
+# nonetheless invokes run-after-fail because the exit was non-zero. We label
+# it as a warning so it's visually distinct from a real failure.
+emoji = "💾"
+extras = {"command": command, "profile": profile, "host": hostname}
+
+if outcome == "success":
+    level = "info"
+    title = f"Restic {command} succeeded"
+    content = "\n".join(metrics)
+elif outcome == "failure" and command == "backup" and err_exit == "3":
+    level = "warning"
+    title = f"Restic {command} completed with warnings"
+    body = "\n".join(metrics)
+    warning_block = "```\nsome source files couldn't be read; snapshot was still saved\n```"
+    content = f"{body}\n\n{warning_block}" if body else warning_block
+else:
+    level = "error"
+    title = f"Restic {command} failed"
+    if err_exit:
+        extras["exit_code"] = err_exit
+    err_text = err_msg or "no message"
+    content = (
+        f"Restic command {command} failed with the following error message:\n\n"
+        f"```\n{err_text}\n```"
+    )
+
+print(json.dumps({
+    "tool": "{{BUNDLE_NAME_PREFIX}} Restic",
+    "title": title,
+    "content": content,
+    "level": level,
+    "emoji": emoji,
+    "extras": extras,
+}))
+PY
+)"
+
+if [[ "${RESTIC_NOTIFY_DRY_RUN:-0}" == "1" ]]; then
+  /usr/bin/python3 -c 'import json,sys; print(json.dumps(json.loads(sys.stdin.read()), indent=2, ensure_ascii=False))' <<<"$PAYLOAD"
+else
+  curl --silent --show-error --max-time 15 \
+    -X POST {{NOTIFY_ENDPOINT}} \
+    -H "Authorization: Bearer $API_KEY" \
+    -H "Content-Type: application/json" \
+    -d "$PAYLOAD" > /dev/null \
+    || echo "restic-notify: telegram POST failed for $COMMAND/$OUTCOME" >&2
+fi
+
+exit 0

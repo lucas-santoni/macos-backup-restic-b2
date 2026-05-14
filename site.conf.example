@@ -1,0 +1,44 @@
+# Per-site configuration. Copy this file to site.conf, uncomment the values
+# you want, edit them, then run bin/configure.sh to render the templates in
+# bin/*.tmpl and config/*.tmpl into runnable scripts and configs.
+#
+# site.conf is .gitignored. The rendered output (bin/*.sh, config/*.toml)
+# is also .gitignored. Templates (.tmpl) and this example are committed.
+#
+# Each variable below has the placeholder shape required (top, uncommented)
+# and an illustrative example value (bottom, commented out) as a reference.
+
+# macOS short username — the user-name component in /Users/<USERNAME>/.
+# Used as the Keychain account name
+# (`security find-generic-password -a $USERNAME`) and in the absolute paths
+# inside profiles.toml. Match your `whoami` output.
+USERNAME=""
+# USERNAME="alex"
+
+# Backblaze B2 repository URL. Format: b2:<bucket>:<repo-path>. The bucket
+# must already exist (created in B2 web UI). The repo path is just an
+# organizational prefix inside the bucket; pick anything.
+B2_REPO=""
+# B2_REPO="b2:my-backup-bucket:/mbp"
+
+# Reverse-DNS prefix for the four launchd .app bundles. Full identifiers
+# become <BUNDLE_ID_PREFIX>.{backup,forget,prune,check}. Convention:
+# com.<your-name>.<machine-or-tool>.
+BUNDLE_ID_PREFIX=""
+# BUNDLE_ID_PREFIX="com.example.backups"
+
+# Display-name prefix for the bundles in System Settings → Login Items.
+# The four rows render as "<prefix> Backup", "<prefix> Forget", etc.
+# A single capitalized word reads cleanest.
+BUNDLE_NAME_PREFIX=""
+# BUNDLE_NAME_PREFIX="Laptop"
+
+# URL that POST-receives notification JSON. The script POSTs a body shaped
+# like {tool, title, content, level, emoji, extras} with Bearer auth from
+# the telegram-gateway-api-key Keychain entry.
+# Optional: leave empty to disable notifications entirely. configure.sh
+# will skip rendering bin/restic-notify.sh and strip the run-after hooks
+# from the rendered profiles.toml. The telegram-gateway-api-key Keychain
+# entry isn't needed in that case.
+NOTIFY_ENDPOINT=""
+# NOTIFY_ENDPOINT="https://notify.example.com/hook"
