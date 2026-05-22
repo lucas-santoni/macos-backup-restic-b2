@@ -21,14 +21,12 @@
 OUTCOME="${1:-unknown}"
 COMMAND="${PROFILE_COMMAND:-unknown}"
 PROFILE="${PROFILE_NAME:-default}"
-# RESTIC_NOTIFY_LOG_DIR overrides the log path during testing — test-notify.sh
-# writes fixture logs into a tmp dir and points us at it. Defaults to the
-# real per-command log directory.
-LOG_DIR="${RESTIC_NOTIFY_LOG_DIR:-$HOME/Documents/backups/logs}"
+# RESTIC_NOTIFY_LOG_DIR overrides the per-command log directory — useful
+# when invoking this script by hand to inspect what it would post.
+LOG_DIR="${RESTIC_NOTIFY_LOG_DIR:-$HOME/backups/logs}"
 
 # RESTIC_NOTIFY_DRY_RUN=1 prints the JSON payload to stdout instead of
-# POSTing to the gateway, so test-notify.sh can render the shapes locally
-# without sending real Telegram messages.
+# POSTing to the gateway. Useful for inspecting the shape without sending.
 if [[ "${RESTIC_NOTIFY_DRY_RUN:-0}" != "1" ]]; then
   API_KEY="$(security find-generic-password -a {{USERNAME}} -s telegram-gateway-api-key -w 2>/dev/null)"
   if [[ -z "$API_KEY" ]]; then
@@ -70,10 +68,6 @@ except FileNotFoundError:
 # bullet-style lines that get joined into CONTENT.
 metrics = []
 
-def find(pattern, text=section, group=0, flags=0):
-    m = re.search(pattern, text, flags)
-    return m.group(group) if m else None
-
 if command == "backup":
     # "processed 36707 files, 12.024 GiB in 0:14"
     m = re.search(r'processed (\d+) files?, ([\d.]+\s*\w+) in ([\d:]+)', section)
@@ -89,13 +83,8 @@ if command == "backup":
     if m:
         metrics.append(f"🆔 snapshot {m.group(1)}")
 elif command == "forget":
-    # restic forget output emits two header lines:
-    #   "keep N snapshots:"     (always present, lists snapshots retained)
-    #   "remove M snapshots:"   (only present when policy actually removes)
-    # The naive "first matching '\d+ snapshots' line" parser saw only the
-    # kept count, so a forget that pruned 5 daily snapshots looked identical
-    # to one that pruned 0. Pull both counts and render together; default
-    # removed to 0 when the section is absent.
+    # "remove N snapshots:" only appears when the policy actually removes
+    # something — default to 0 so a no-op forget still renders cleanly.
     kept = re.search(r'keep (\d+) snapshots?:', section)
     removed = re.search(r'remove (\d+) snapshots?:', section)
     if kept:
@@ -146,7 +135,7 @@ else:
     )
 
 print(json.dumps({
-    "tool": "{{BUNDLE_NAME_PREFIX}} Restic",
+    "tool": f"{hostname} Restic",
     "title": title,
     "content": content,
     "level": level,

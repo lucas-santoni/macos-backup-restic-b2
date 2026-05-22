@@ -1,17 +1,13 @@
-# Per-site configuration. Copy this file to site.conf, uncomment the values
-# you want, edit them, then run bin/configure.sh to render the templates in
+# Per-site configuration. Copy this file to site.conf, fill the values
+# you want, then run bin/configure.sh to render the templates in
 # bin/*.tmpl and config/*.tmpl into runnable scripts and configs.
 #
 # site.conf is .gitignored. The rendered output (bin/*.sh, config/*.toml)
 # is also .gitignored. Templates (.tmpl) and this example are committed.
-#
-# Each variable below has the placeholder shape required (top, uncommented)
-# and an illustrative example value (bottom, commented out) as a reference.
 
 # macOS short username — the user-name component in /Users/<USERNAME>/.
-# Used as the Keychain account name
-# (`security find-generic-password -a $USERNAME`) and in the absolute paths
-# inside profiles.toml. Match your `whoami` output.
+# Used as the Keychain account name and in absolute paths inside
+# profiles.toml. Match your `whoami` output.
 USERNAME=""
 # USERNAME="alex"
 
@@ -21,17 +17,11 @@ USERNAME=""
 B2_REPO=""
 # B2_REPO="b2:my-backup-bucket:/mbp"
 
-# Reverse-DNS prefix for the four launchd .app bundles. Full identifiers
-# become <BUNDLE_ID_PREFIX>.{backup,forget,prune,check}. Convention:
-# com.<your-name>.<machine-or-tool>.
-BUNDLE_ID_PREFIX=""
-# BUNDLE_ID_PREFIX="com.example.backups"
-
-# Display-name prefix for the bundles in System Settings → Login Items.
-# The four rows render as "<prefix> Backup", "<prefix> Forget", etc.
-# A single capitalized word reads cleanest.
-BUNDLE_NAME_PREFIX=""
-# BUNDLE_NAME_PREFIX="Laptop"
+# Reverse-DNS prefix for the four launchd agent labels. Full identifiers
+# become <LABEL_PREFIX>.{backup,forget,prune,check}. Convention:
+# <tld>.<your-name>.<tool>.
+LABEL_PREFIX=""
+# LABEL_PREFIX="com.example.restic"
 
 # URL that POST-receives notification JSON. The script POSTs a body shaped
 # like {tool, title, content, level, emoji, extras} with Bearer auth from

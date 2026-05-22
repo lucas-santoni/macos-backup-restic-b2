@@ -75,7 +75,7 @@
 **/Library/Group Containers/HUAQ24HBR6.dev.orbstack
 
 # === Restic's own cache ===
-**/Documents/backups/cache
+**/backups/cache
 
 # === Misc ===
 **/.DS_Store

@@ -3,8 +3,8 @@
 # into the environment then exec's resticprofile with the given arguments.
 #
 # Usage:
-#   ~/Documents/backups/bin/restic-wrap.sh -n default backup
-#   ~/Documents/backups/bin/restic-wrap.sh -n default snapshots
+#   ~/backups/bin/restic-wrap.sh -n default backup
+#   ~/backups/bin/restic-wrap.sh -n default snapshots
 
 set -e
 
@@ -30,35 +30,13 @@ fetch_secret() {
 fetch_secret RESTIC_PASSWORD restic-repo-password
 fetch_secret B2_ACCOUNT_ID   restic-b2-key-id
 fetch_secret B2_ACCOUNT_KEY  restic-b2-app-key
-export RESTIC_CACHE_DIR="$HOME/Documents/backups/cache"
+export RESTIC_CACHE_DIR="$HOME/backups/cache"
 
-# Inject --config only if the caller didn't already pass one.
-# Interactive use (no --config) gets the default config injected.
-# Scheduled launchd plists already include --config, so they're passed through.
+# Inject --config so interactive use (e.g. `restic-wrap.sh snapshots`) doesn't
+# require typing the absolute path. Scheduled launchd plists already pass
+# --config, so the check is a pass-through there.
 if [[ "$*" != *"--config"* ]]; then
-  set -- --config "$HOME/Documents/backups/config/profiles.toml" "$@"
-fi
-
-# Inject --log for direct command runs so manual invocations land in the
-# same per-command log file the run-after notification hook parses. Without
-# this, a manual `backup` writes only to the terminal; the hook then reports
-# the previous scheduled run's metrics. Skip for `run-schedule` (which is
-# what the launchd plists invoke; resticprofile applies `schedule-log`
-# from profiles.toml automatically there) and for read-only commands like
-# `snapshots` that have no configured log.
-if [[ "$*" != *"--log"* ]]; then
-  for arg in "$@"; do
-    case "$arg" in
-      run-schedule)
-        break ;;
-      backup|forget|prune|check)
-        set -- --log "$HOME/Documents/backups/logs/$arg.log" "$@"
-        break ;;
-      *.backup|*.forget|*.prune|*.check)
-        set -- --log "$HOME/Documents/backups/logs/${arg##*.}.log" "$@"
-        break ;;
-    esac
-  done
+  set -- --config "$HOME/backups/config/profiles.toml" "$@"
 fi
 
 exec /opt/homebrew/bin/resticprofile "$@"
