@@ -56,13 +56,22 @@ repository = "{{B2_REPO}}"
   schedule-log = "/Users/{{USERNAME}}/backups/logs/forget.log"
 
   [profiles.default.prune]
+  # Bounded daily prune. Repacking happens over a high-latency B2 link, so the
+  # two knobs below keep any single run short and predictable instead of letting
+  # it grow into a multi-hour repack marathon:
+  # - max-unused: tolerate up to 10% dead space before bothering to repack, so
+  #   most days repack near-zero on a slowly-churning home dir.
+  # - max-repack-size: hard ceiling on bytes repacked per run; leftovers are
+  #   picked up by the next daily run.
+  max-unused = "10%"
+  max-repack-size = "300M"
   lock-wait = "4h"
   retry-lock = "4h"
   # NOTIFY:BEGIN
   run-after      = ["/Users/{{USERNAME}}/backups/bin/restic-notify.sh success"]
   run-after-fail = ["/Users/{{USERNAME}}/backups/bin/restic-notify.sh failure"]
   # NOTIFY:END
-  schedule = "Sun *-*-* 04:00:00"
+  schedule = "*-*-* 03:30:00"
   schedule-log = "/Users/{{USERNAME}}/backups/logs/prune.log"
 
   [profiles.default.check]
@@ -73,5 +82,7 @@ repository = "{{B2_REPO}}"
   run-after      = ["/Users/{{USERNAME}}/backups/bin/restic-notify.sh success"]
   run-after-fail = ["/Users/{{USERNAME}}/backups/bin/restic-notify.sh failure"]
   # NOTIFY:END
-  schedule = "Sun *-*-* 05:00:00"
+  # Weekly, pushed to 06:00 so it sits well clear of the daily 03:30 prune even
+  # on a heavy catch-up day (prune is capped, so it never reaches here).
+  schedule = "Sun *-*-* 06:00:00"
   schedule-log = "/Users/{{USERNAME}}/backups/logs/check.log"
