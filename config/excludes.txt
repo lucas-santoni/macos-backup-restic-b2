@@ -16,6 +16,10 @@
 # files (ATXAppPredictionMicroLocation, _ATXAppLaunchLocation) return EPERM
 # under FDA. OS rebuilds it from usage patterns, so nothing to back up.
 **/Library/DuetExpertCenter
+# Apple Maps "Report a Problem" payloads (GraphDirections, etc.) are written
+# when you submit a map issue; they return EPERM under FDA and carry no
+# restore value.
+**/Library/Containers/com.apple.Maps/Data/Library/Maps/ReportAProblem
 
 # === macOS system / user library noise ===
 **/.Trash
