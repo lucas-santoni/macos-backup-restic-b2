@@ -11,6 +11,11 @@
 USERNAME=""
 # USERNAME="alex"
 
+# Hostname stored in restic snapshots created by this site. Pinning this value
+# keeps retention grouping stable if macOS reports a different system hostname.
+BACKUP_HOST=""
+# BACKUP_HOST="MacBook.local"
+
 # Backblaze B2 repository URL. Format: b2:<bucket>:<repo-path>. The bucket
 # must already exist (created in B2 web UI). The repo path is just an
 # organizational prefix inside the bucket; pick anything.

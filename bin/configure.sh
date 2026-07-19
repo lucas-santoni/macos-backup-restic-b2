@@ -26,7 +26,7 @@ fi
 
 source "$CONF"
 
-required=(USERNAME B2_REPO LABEL_PREFIX)
+required=(USERNAME BACKUP_HOST B2_REPO LABEL_PREFIX)
 missing=()
 for var in "${required[@]}"; do
   if [[ -z "${(P)var:-}" ]]; then
@@ -55,6 +55,7 @@ sed_escape() {
   printf '%s' "$1" | /usr/bin/sed -e 's/[\\|&]/\\&/g'
 }
 USERNAME_ESC=$(sed_escape "$USERNAME")
+BACKUP_HOST_ESC=$(sed_escape "$BACKUP_HOST")
 B2_REPO_ESC=$(sed_escape "$B2_REPO")
 LABEL_PREFIX_ESC=$(sed_escape "$LABEL_PREFIX")
 NOTIFY_ENDPOINT_ESC=$(sed_escape "${NOTIFY_ENDPOINT:-}")
@@ -80,6 +81,7 @@ for entry in "${templates[@]}"; do
   fi
   /usr/bin/sed \
     -e "s|{{USERNAME}}|${USERNAME_ESC}|g" \
+    -e "s|{{BACKUP_HOST}}|${BACKUP_HOST_ESC}|g" \
     -e "s|{{B2_REPO}}|${B2_REPO_ESC}|g" \
     -e "s|{{LABEL_PREFIX}}|${LABEL_PREFIX_ESC}|g" \
     -e "s|{{NOTIFY_ENDPOINT}}|${NOTIFY_ENDPOINT_ESC}|g" \

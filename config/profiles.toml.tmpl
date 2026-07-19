@@ -20,6 +20,7 @@ repository = "{{B2_REPO}}"
 
   [profiles.default.backup]
   source = ["/Users/{{USERNAME}}"]
+  host = "{{BACKUP_HOST}}"
   exclude-file = "/Users/{{USERNAME}}/backups/config/excludes.txt"
   exclude-caches = true
   one-file-system = true

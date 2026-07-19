@@ -20,6 +20,9 @@
 # when you submit a map issue; they return EPERM under FDA and carry no
 # restore value.
 **/Library/Containers/com.apple.Maps/Data/Library/Maps/ReportAProblem
+# Find My widget timelines are OS-managed Chrono snapshots protected from
+# user-space reads, even when the backup process has Full Disk Access.
+**/Library/Containers/com.apple.findmy.FindMyWidgetItems/Data/SystemData/com.apple.chrono/snapshots
 
 # === macOS system / user library noise ===
 **/.Trash
