@@ -64,8 +64,13 @@ repository = "{{B2_REPO}}"
   #   most days repack near-zero on a slowly-churning home dir.
   # - max-repack-size: hard ceiling on bytes repacked per run; leftovers are
   #   picked up by the next daily run.
+  #   Raised 300M -> 2G on 2026-08-03: at 300M the ceiling sat below daily churn,
+  #   so dead space ratcheted upward instead of converging (10.4% -> 13.9% over
+  #   ~30 days, never reaching the 10% max-unused target). The cap was never what
+  #   kept runs short: a full run took 1m45s, of which repacking was ~3s and the
+  #   rest was the unavoidable "finding data still in use" scan.
   max-unused = "10%"
-  max-repack-size = "300M"
+  max-repack-size = "2G"
   lock-wait = "4h"
   retry-lock = "4h"
   # NOTIFY:BEGIN
