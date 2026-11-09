@@ -28,9 +28,9 @@ LOG_DIR="${RESTIC_NOTIFY_LOG_DIR:-$HOME/backups/logs}"
 # RESTIC_NOTIFY_DRY_RUN=1 prints the JSON payload to stdout instead of
 # POSTing to the gateway. Useful for inspecting the shape without sending.
 if [[ "${RESTIC_NOTIFY_DRY_RUN:-0}" != "1" ]]; then
-  API_KEY="$(security find-generic-password -a {{USERNAME}} -s telegram-gateway-api-key -w 2>/dev/null)"
+  API_KEY="$(security find-generic-password -a {{USERNAME}} -s {{NOTIFY_KEYCHAIN_SERVICE}} -w 2>/dev/null)"
   if [[ -z "$API_KEY" ]]; then
-    echo "restic-notify: keychain read for telegram-gateway-api-key failed" >&2
+    echo "restic-notify: keychain read for {{NOTIFY_KEYCHAIN_SERVICE}} failed" >&2
     exit 0
   fi
 fi
@@ -148,12 +148,23 @@ PY
 if [[ "${RESTIC_NOTIFY_DRY_RUN:-0}" == "1" ]]; then
   /usr/bin/python3 -c 'import json,sys; print(json.dumps(json.loads(sys.stdin.read()), indent=2, ensure_ascii=False))' <<<"$PAYLOAD"
 else
+  # NOTIFY_AUTH (site.conf): "bearer" sends the Keychain secret as a Bearer
+  # token; "hmac" never sends it and signs instead: X-Webhook-Timestamp plus
+  # X-Webhook-Signature-V2 = hex HMAC-SHA256 of "<timestamp>.<body>" (replay-safe).
+  if [[ "{{NOTIFY_AUTH}}" == "hmac" ]]; then
+    TS="$(date +%s)"
+    # printf, not <<<: a here-string appends a newline that curl doesn't send.
+    SIG="$(printf '%s' "$PAYLOAD" | NOTIFY_SECRET="$API_KEY" /usr/bin/python3 -c 'import hmac,hashlib,os,sys; print(hmac.new(os.environ["NOTIFY_SECRET"].encode(), sys.argv[1].encode() + b"." + sys.stdin.buffer.read(), hashlib.sha256).hexdigest())' "$TS")"
+    AUTH_ARGS=(-H "X-Webhook-Timestamp: $TS" -H "X-Webhook-Signature-V2: $SIG")
+  else
+    AUTH_ARGS=(-H "Authorization: Bearer $API_KEY")
+  fi
   curl --silent --show-error --max-time 15 \
     -X POST {{NOTIFY_ENDPOINT}} \
-    -H "Authorization: Bearer $API_KEY" \
+    "${AUTH_ARGS[@]}" \
     -H "Content-Type: application/json" \
-    -d "$PAYLOAD" > /dev/null \
-    || echo "restic-notify: telegram POST failed for $COMMAND/$OUTCOME" >&2
+    --data-binary "$PAYLOAD" > /dev/null \
+    || echo "restic-notify: POST failed for $COMMAND/$OUTCOME" >&2
 fi
 
 exit 0
