@@ -49,6 +49,9 @@ if [[ -n "${NOTIFY_ENDPOINT:-}" ]]; then
   [[ "$NOTIFY_ENDPOINT" == http* ]] || { echo "NOTIFY_ENDPOINT must be a URL (got: $NOTIFY_ENDPOINT)" >&2; exit 1; }
   NOTIFY_ENABLED=1
 fi
+NOTIFY_AUTH="${NOTIFY_AUTH:-bearer}"
+[[ "$NOTIFY_AUTH" == bearer || "$NOTIFY_AUTH" == hmac ]] || { echo "NOTIFY_AUTH must be bearer or hmac (got: $NOTIFY_AUTH)" >&2; exit 1; }
+NOTIFY_KEYCHAIN_SERVICE="${NOTIFY_KEYCHAIN_SERVICE:-telegram-gateway-api-key}"
 
 # Escape sed-replacement specials so URLs with `&` etc. survive substitution.
 sed_escape() {
@@ -59,6 +62,8 @@ BACKUP_HOST_ESC=$(sed_escape "$BACKUP_HOST")
 B2_REPO_ESC=$(sed_escape "$B2_REPO")
 LABEL_PREFIX_ESC=$(sed_escape "$LABEL_PREFIX")
 NOTIFY_ENDPOINT_ESC=$(sed_escape "${NOTIFY_ENDPOINT:-}")
+NOTIFY_AUTH_ESC=$(sed_escape "$NOTIFY_AUTH")
+NOTIFY_KEYCHAIN_SERVICE_ESC=$(sed_escape "$NOTIFY_KEYCHAIN_SERVICE")
 
 templates=(
   "bin/restic-wrap.sh.tmpl:bin/restic-wrap.sh"
@@ -85,6 +90,8 @@ for entry in "${templates[@]}"; do
     -e "s|{{B2_REPO}}|${B2_REPO_ESC}|g" \
     -e "s|{{LABEL_PREFIX}}|${LABEL_PREFIX_ESC}|g" \
     -e "s|{{NOTIFY_ENDPOINT}}|${NOTIFY_ENDPOINT_ESC}|g" \
+    -e "s|{{NOTIFY_AUTH}}|${NOTIFY_AUTH_ESC}|g" \
+    -e "s|{{NOTIFY_KEYCHAIN_SERVICE}}|${NOTIFY_KEYCHAIN_SERVICE_ESC}|g" \
     "$src" > "$dst"
 
   # profiles.toml wraps each notify hook block with # NOTIFY:BEGIN/END.
