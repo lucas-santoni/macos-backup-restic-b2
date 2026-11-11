@@ -12,11 +12,17 @@ priority = "low"
 # Both are needed because DarkWake-fragmented runs can let a previous job
 # still hold one or the other when the next one fires. 4h gives the trailing
 # job a wide window to release.
+# - force-inactive-lock lets resticprofile run `restic unlock` and retry when
+#   restic reports a lock older than 1h. Added 2026-11-11 after a backup that
+#   slept mid-run re-created its lock under a transient hostname (Laptop.lan)
+#   and never removed it, blocking forget/prune/check for 8 days. It is a
+#   profile-level option, so it covers every command below.
 
 [profiles.default]
 description = "Home directory backup to Backblaze B2"
 initialize = false
 repository = "{{B2_REPO}}"
+force-inactive-lock = true
 
   [profiles.default.backup]
   source = ["/Users/{{USERNAME}}"]
