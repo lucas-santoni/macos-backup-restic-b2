@@ -51,7 +51,7 @@ if [[ -n "${NOTIFY_ENDPOINT:-}" ]]; then
 fi
 NOTIFY_AUTH="${NOTIFY_AUTH:-bearer}"
 [[ "$NOTIFY_AUTH" == bearer || "$NOTIFY_AUTH" == hmac ]] || { echo "NOTIFY_AUTH must be bearer or hmac (got: $NOTIFY_AUTH)" >&2; exit 1; }
-NOTIFY_KEYCHAIN_SERVICE="${NOTIFY_KEYCHAIN_SERVICE:-telegram-gateway-api-key}"
+NOTIFY_KEYCHAIN_SERVICE="${NOTIFY_KEYCHAIN_SERVICE:-hermes-webhook-secret}"
 
 # Escape sed-replacement specials so URLs with `&` etc. survive substitution.
 sed_escape() {

@@ -44,4 +44,4 @@ NOTIFY_ENDPOINT=""
 #           = hex HMAC-SHA256 of "<timestamp>.<body>" (e.g. a Hermes webhook route)
 NOTIFY_AUTH="bearer"
 # Keychain service holding that secret (account = USERNAME).
-NOTIFY_KEYCHAIN_SERVICE="telegram-gateway-api-key"
+NOTIFY_KEYCHAIN_SERVICE="hermes-webhook-secret"
