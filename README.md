@@ -18,7 +18,7 @@ config/excludes.txt        backup exclusions
 
 `bin/*.tmpl` and `config/*.toml.tmpl` are committed; their rendered outputs are .gitignored.
 
-Notifications are optional. The author's setup posts to a private Telegram gateway; if you fork this, either plug in your own notifier or leave `NOTIFY_ENDPOINT` empty in `site.conf` to disable them entirely.
+Notifications are optional. The author's setup posts to a private Hermes webhook route (`NOTIFY_AUTH=hmac`); if you fork this, either plug in your own notifier or leave `NOTIFY_ENDPOINT` empty in `site.conf` to disable them entirely.
 
 ## Setup
 

@@ -15,7 +15,7 @@
 # Reads metrics (size, duration, snapshot count) by parsing the most recent
 # section of the per-command resticprofile log file.
 #
-# Always exits 0 — telegram delivery failures must not cascade into
+# Always exits 0 — delivery failures must not cascade into
 # resticprofile's hook chain.
 
 OUTCOME="${1:-unknown}"
